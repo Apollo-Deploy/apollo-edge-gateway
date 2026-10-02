@@ -1,0 +1,53 @@
+name: Gateway CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust 1.88 / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TARGET_DIR: target
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install native prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential clang cmake libssl-dev pkg-config protobuf-compiler
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.88.0 --profile minimal --component rustfmt --component clippy
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Check all targets and features
+        run: cargo check --locked --all-targets --all-features
+
+      - name: Run Clippy (default features)
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run Clippy (all features)
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Run gateway tests
+        run: cargo test --locked --all-features
+
+      - name: Build release executable
+        run: cargo build --locked --release --bin apollo-edge-gateway

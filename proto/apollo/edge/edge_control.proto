@@ -1,0 +1,250 @@
+syntax = "proto3";
+
+package apollo.edge;
+
+option java_package = "com.apollodeploy.deployment.proto.edge";
+option java_multiple_files = true;
+
+// Apollo-owned L7 gateway contract. This namespace is intentionally separate
+// from unrelated deployment messages.
+
+enum NetworkScope {
+  NETWORK_SCOPE_UNSPECIFIED = 0;
+  NETWORK_SCOPE_NODE_LOCAL = 1;
+  NETWORK_SCOPE_CELL_PRIVATE = 2;
+  NETWORK_SCOPE_REGION_PRIVATE = 3;
+}
+
+enum EdgeProtocol {
+  EDGE_PROTOCOL_UNSPECIFIED = 0;
+  EDGE_PROTOCOL_HTTP1 = 1;
+  EDGE_PROTOCOL_HTTP2 = 2;
+  EDGE_PROTOCOL_GRPC = 3;
+  EDGE_PROTOCOL_WEBSOCKET = 4;
+}
+
+enum BackendHealthRequirement {
+  BACKEND_HEALTH_REQUIREMENT_UNSPECIFIED = 0;
+  BACKEND_HEALTH_REQUIREMENT_READY_AND_HEALTHY = 1;
+}
+
+enum EdgeCommandResult {
+  EDGE_COMMAND_RESULT_UNSPECIFIED = 0;
+  EDGE_COMMAND_RESULT_ACCEPTED = 1;
+  EDGE_COMMAND_RESULT_ALREADY_APPLIED = 2;
+  EDGE_COMMAND_RESULT_REJECTED = 3;
+  EDGE_COMMAND_RESULT_DRAINING = 4;
+  EDGE_COMMAND_RESULT_WITHDRAWN = 5;
+}
+
+enum EdgeObservationKind {
+  EDGE_OBSERVATION_KIND_UNSPECIFIED = 0;
+  EDGE_OBSERVATION_KIND_CONFIGURATION_RECEIVED = 1;
+  EDGE_OBSERVATION_KIND_CONFIGURATION_REJECTED = 2;
+  EDGE_OBSERVATION_KIND_CONFIGURATION_ACTIVE = 3;
+  EDGE_OBSERVATION_KIND_ROUTE_SERVING = 4;
+  EDGE_OBSERVATION_KIND_ROUTE_DRAINED = 5;
+  EDGE_OBSERVATION_KIND_BACKEND_HEALTHY = 6;
+  EDGE_OBSERVATION_KIND_BACKEND_UNHEALTHY = 7;
+  EDGE_OBSERVATION_KIND_CERTIFICATE_LOADED = 8;
+  EDGE_OBSERVATION_KIND_CERTIFICATE_FAILED = 9;
+  EDGE_OBSERVATION_KIND_RESOURCE_PRESSURE = 10;
+  EDGE_OBSERVATION_KIND_CONFIGURATION_WITHDRAWN = 11;
+}
+
+message ProductIdentity {
+  string organization_id = 1;
+  string project_id = 2;
+  string service_id = 3;
+  string deployment_id = 4;
+  string release_id = 5;
+  string route_id = 6;
+  string traffic_target_id = 7;
+}
+
+message OperationIdentity {
+  string operation_id = 1;
+  string effect_id = 2;
+  uint64 controller_epoch = 3;
+  uint64 generation = 4;
+  bytes configuration_hash = 5;
+}
+
+message WorkloadEndpoint {
+  string workload_id = 1;
+  uint64 workload_generation = 2;
+  string node_id = 3;
+  string region_id = 4;
+  string cell_id = 5;
+  string address = 6;
+  uint32 port = 7;
+  EdgeProtocol protocol = 8;
+  NetworkScope network_scope = 9;
+  int64 observed_at_unix_ms = 10;
+  bool ready = 11;
+  bool healthy = 12;
+}
+
+message EdgeBackend {
+  WorkloadEndpoint endpoint = 1;
+  BackendHealthRequirement health_requirement = 2;
+  uint32 weight = 3;
+  bool draining = 4;
+}
+
+message EdgeTlsBinding {
+  string certificate_id = 1;
+  uint64 certificate_version = 2;
+  string hostname = 3;
+  bytes public_certificate_hash = 4;
+  string material_reference = 5;
+  bytes certificate_chain_hash = 6;
+}
+
+message EdgeRoute {
+  ProductIdentity identity = 1;
+  string hostname = 2;
+  string path_match = 3;
+  repeated string methods = 4;
+  repeated EdgeProtocol protocols = 5;
+  repeated EdgeBackend backends = 6;
+  EdgeTlsBinding tls = 7;
+  uint64 route_generation = 8;
+}
+
+message EdgeConfiguration {
+  ProductIdentity identity = 2;
+  uint64 controller_epoch = 3;
+  uint64 generation = 4;
+  bytes configuration_hash = 5;
+  int64 issued_at_unix_ms = 6;
+  int64 valid_until_unix_ms = 7;
+  repeated EdgeRoute routes = 8;
+  uint32 max_header_bytes = 9;
+  uint64 max_body_bytes = 10;
+  uint32 max_connections = 11;
+  uint32 max_concurrency = 12;
+  uint32 drain_timeout_seconds = 13;
+  uint32 retry_max_attempts = 14;
+  repeated string retry_methods = 15;
+  bytes semantic_hash = 16;
+}
+
+message ApplyConfigurationRequest {
+  OperationIdentity operation = 1;
+  ProductIdentity identity = 2;
+  EdgeConfiguration configuration = 3;
+}
+
+message DrainConfigurationRequest {
+  OperationIdentity operation = 1;
+  ProductIdentity identity = 2;
+  uint64 drain_generation = 3;
+  int64 drain_until_unix_ms = 4;
+}
+
+message WithdrawConfigurationRequest {
+  OperationIdentity operation = 1;
+  ProductIdentity identity = 2;
+  uint64 withdrawn_generation = 3;
+}
+
+message InspectConfigurationRequest {
+  ProductIdentity identity = 1;
+}
+
+message GatewayCapabilitiesRequest {}
+
+message GatewayStatusRequest {}
+
+// Private certificate material is delivered only over the authenticated
+// gateway control channel. It is never persisted in an Edge configuration.
+message InstallCertificateMaterialRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  string certificate_id = 3;
+  uint64 certificate_version = 4;
+  bytes certificate_chain_pem = 5;
+  bytes private_key_pem = 6;
+  bytes public_key_sha256 = 7;
+  bytes certificate_chain_sha256 = 8;
+}
+
+message EdgeCommandResponse {
+  EdgeCommandResult result = 1;
+  string error_code = 2;
+  bool retryable = 3;
+  uint64 controller_epoch = 4;
+  uint64 generation = 5;
+  bytes configuration_hash = 6;
+  int64 observed_at_unix_ms = 7;
+  bytes semantic_hash = 8;
+}
+
+message EdgeConfigurationState {
+  ProductIdentity identity = 1;
+  uint64 controller_epoch = 2;
+  uint64 generation = 3;
+  bytes configuration_hash = 4;
+  bool withdrawn = 5;
+  int64 valid_until_unix_ms = 6;
+  uint64 active_connections = 7;
+  int64 observed_at_unix_ms = 8;
+  bytes semantic_hash = 9;
+  repeated string serving_route_ids = 10;
+}
+
+message GatewayCapabilities {
+  string gateway_id = 2;
+  string pingora_version = 3;
+  repeated EdgeProtocol protocols = 4;
+  bool tls_termination = 5;
+  bool http3 = 6;
+  uint32 max_routes = 7;
+  uint32 max_backends_per_route = 8;
+}
+
+message GatewayStatus {
+  string gateway_id = 1;
+  string session_id = 2;
+  uint64 controller_epoch = 3;
+  uint64 active_generation = 4;
+  bytes active_configuration_hash = 5;
+  bool serving = 6;
+  bool authority_valid = 7;
+  uint64 active_connections = 8;
+  int64 observed_at_unix_ms = 9;
+}
+
+message EdgeObservation {
+  string gateway_id = 1;
+  string session_id = 2;
+  ProductIdentity identity = 3;
+  OperationIdentity operation = 4;
+  EdgeObservationKind kind = 5;
+  string subject_id = 6;
+  string detail_code = 7;
+  int64 observed_at_unix_ms = 8;
+}
+
+message ControlRequest {
+  oneof payload {
+    ApplyConfigurationRequest apply_configuration = 1;
+    InspectConfigurationRequest inspect_configuration = 2;
+    DrainConfigurationRequest drain_configuration = 3;
+    WithdrawConfigurationRequest withdraw_configuration = 4;
+    GatewayCapabilitiesRequest gateway_capabilities = 5;
+    GatewayStatusRequest gateway_status = 6;
+    InstallCertificateMaterialRequest install_certificate_material = 7;
+  }
+}
+
+message ControlResponse {
+  oneof payload {
+    EdgeCommandResponse command = 1;
+    EdgeConfigurationState configuration = 2;
+    GatewayCapabilities capabilities = 3;
+    GatewayStatus status = 4;
+  }
+  repeated EdgeObservation observations = 5;
+}

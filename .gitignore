@@ -1,0 +1,22 @@
+# Build output and locally exported source archives.
+/target/
+
+# Local configuration and runtime data; only the template is public.
+.env
+.env.*
+!.env.example
+/secrets/
+/var/
+*.state
+*.state.tmp
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.log
+
+# Local tooling output.
+__pycache__/
+*.py[cod]
+.DS_Store
