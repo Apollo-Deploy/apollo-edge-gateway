@@ -13,11 +13,15 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = (
-    "Cargo.toml", "Cargo.lock", "build.rs", "deny.toml", "rust-toolchain.toml",
+    "Cargo.toml", "Cargo.lock", "deny.toml", "rust-toolchain.toml",
     "README.md", "CONTRIBUTING.md", "SECURITY.md", ".gitignore", ".env.example",
 )
-SOURCE_DIRECTORIES = ("src", "proto", "benches", "tests", "docs", "scripts", ".github")
-EXCLUDED_DIRECTORIES = {".git", "target", "__pycache__", "secrets", "var", "raw", "evidence"}
+SOURCE_DIRECTORIES = ("src", "crates", "benches", "tests", "docs", "scripts", ".github")
+EXCLUDED_DIRECTORIES = {".git", "target", "__pycache__", "secrets", "var", "raw", "evidence", "performance"}
+EXCLUDED_DOCUMENTS = {
+    "docs/refactor-review.md", "docs/service-architecture.md",
+    "docs/repository-extraction.md", "benches/README.md",
+}
 PRIVATE_SUFFIXES = {".pem", ".key", ".crt", ".p12", ".pfx", ".state", ".log"}
 
 
@@ -30,7 +34,7 @@ def source_files():
     files = []
     for path in sorted(set(candidates)):
         relative = path.relative_to(ROOT)
-        if any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
+        if relative.as_posix() in EXCLUDED_DOCUMENTS or any(part in EXCLUDED_DIRECTORIES for part in relative.parts):
             continue
         if path.name == ".DS_Store" or path.suffix in {".pyc", ".pyo"}:
             continue

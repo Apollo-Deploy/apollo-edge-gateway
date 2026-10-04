@@ -1,5 +1,4 @@
 //! Independently signed input fixtures shared by snapshot and command tests.
-
 use prost::Message;
 use sha2::{Digest, Sha256};
 
@@ -18,6 +17,7 @@ pub(crate) fn configuration() -> EdgeConfiguration {
         route_id: "route".into(),
         traffic_target_id: "target".into(),
     };
+
     let mut configuration = EdgeConfiguration {
         identity: Some(identity.clone()),
         controller_epoch: 1,
@@ -60,11 +60,14 @@ pub(crate) fn configuration() -> EdgeConfiguration {
         }],
         ..Default::default()
     };
+
     sign_configuration(&mut configuration);
+
     configuration
 }
 
 pub(crate) fn sign_configuration(configuration: &mut EdgeConfiguration) {
     configuration.configuration_hash.clear();
+
     configuration.configuration_hash = Sha256::digest(configuration.encode_to_vec()).to_vec();
 }

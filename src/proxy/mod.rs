@@ -2,7 +2,6 @@
 //!
 //! Startup constructs [`ApolloGateway`] and obtains listener settings through
 //! [`tls_settings`]; the supporting modules remain private to this feature.
-
 mod host;
 mod limits;
 mod tls;
@@ -53,27 +52,34 @@ impl ProxyHttp for ApolloGateway {
 
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
         let host = request_host(session)?;
+
         let request = session.req_header();
+
         if !request.raw_path_is_utf8() {
             return Error::e_explain(
                 ErrorType::HTTPStatus(400),
                 "request target is not valid UTF-8",
             );
         }
+
         if request.uri.authority().is_some() && !session.as_downstream().is_http2() {
             return Error::e_explain(
                 ErrorType::HTTPStatus(400),
                 "absolute-form request targets are not accepted",
             );
         }
+
         let path = request.uri.path();
+
         if path.len() > MAX_PATH_BYTES {
             return Error::e_explain(ErrorType::HTTPStatus(414), "request path exceeds the bound");
         }
+
         let limits = self
             .state
             .limits_for(&host, path)
             .unwrap_or_else(default_runtime_limits);
+
         let header_bytes = request
             .headers
             .iter()
@@ -81,19 +87,23 @@ impl ProxyHttp for ApolloGateway {
             .sum::<usize>()
             .saturating_add(request.method.as_str().len())
             .saturating_add(request.raw_path().len());
+
         if header_bytes > limits.max_header_bytes {
             return Error::e_explain(
                 ErrorType::HTTPStatus(431),
                 "request headers exceed the bound",
             );
         }
+
         if request.headers.get_all("content-length").iter().count() > 1 {
             return Error::e_explain(
                 ErrorType::HTTPStatus(400),
                 "multiple Content-Length headers are not accepted",
             );
         }
+
         let transfer_encoding = request.headers.get_all("transfer-encoding");
+
         if transfer_encoding.iter().count() > 1
             || transfer_encoding
                 .iter()
@@ -101,6 +111,7 @@ impl ProxyHttp for ApolloGateway {
         {
             return Error::e_explain(ErrorType::HTTPStatus(400), "invalid Transfer-Encoding");
         }
+
         if request.headers.get("content-length").is_some()
             && transfer_encoding.iter().next().is_some()
         {
@@ -109,12 +120,14 @@ impl ProxyHttp for ApolloGateway {
                 "Content-Length with Transfer-Encoding is not accepted",
             );
         }
+
         if let Some(content_length) = request.headers.get("content-length") {
             let content_length = content_length
                 .to_str()
                 .ok()
                 .and_then(|value| value.trim().parse::<u64>().ok())
                 .ok_or_else(|| Error::new(ErrorType::HTTPStatus(400)))?;
+
             if content_length > limits.max_body_bytes {
                 return Error::e_explain(
                     ErrorType::HTTPStatus(413),
@@ -122,17 +135,24 @@ impl ProxyHttp for ApolloGateway {
                 );
             }
         }
+
         if request.headers.get("upgrade").is_some() {
             return Error::e_explain(
                 ErrorType::HTTPStatus(501),
                 "protocol upgrade is unsupported",
             );
         }
+
         acquire_in_flight(&self.in_flight, limits.max_concurrency)?;
+
         ctx.max_body_bytes = limits.max_body_bytes;
+
         ctx.retry_max_attempts = limits.retry_max_attempts;
+
         ctx.retry_methods = limits.retry_methods;
+
         ctx.counted = true;
+
         if ctx.retry_max_attempts > 1
             && ctx
                 .retry_methods
@@ -141,6 +161,7 @@ impl ProxyHttp for ApolloGateway {
         {
             session.enable_retry_buffering();
         }
+
         Ok(false)
     }
 
@@ -160,18 +181,24 @@ impl ProxyHttp for ApolloGateway {
         _ctx: &mut Self::CTX,
     ) -> Result<Box<HttpPeer>> {
         let host = request_host(session)?;
+
         let request = session.req_header();
+
         if request.uri.authority().is_some() && !session.as_downstream().is_http2() {
             return Error::e_explain(
                 ErrorType::HTTPStatus(400),
                 "absolute-form request targets are not accepted",
             );
         }
+
         let path = request.uri.path();
+
         let method = session.req_header().method.as_str();
+
         if path.len() > MAX_PATH_BYTES {
             return Error::e_explain(ErrorType::HTTPStatus(414), "request path exceeds the bound");
         }
+
         let address = match self.state.resolve_backend(&host, path, method) {
             RouteLookup::Backend(address) => address,
             RouteLookup::NotFound => {
@@ -185,7 +212,9 @@ impl ProxyHttp for ApolloGateway {
                 return Error::e_explain(ErrorType::HTTPStatus(421), "ambiguous route ownership");
             }
         };
+
         let peer = HttpPeer::new(address, false, String::new());
+
         Ok(Box::new(peer))
     }
 
@@ -206,8 +235,11 @@ impl ProxyHttp for ApolloGateway {
         ] {
             upstream_request.remove_header(header);
         }
+
         let host = request_host(session)?;
+
         upstream_request.insert_header("host", host)?;
+
         Ok(())
     }
 
@@ -220,15 +252,19 @@ impl ProxyHttp for ApolloGateway {
         client_reused: bool,
     ) -> Box<Error> {
         let mut error = e.more_context(format!("Peer: {peer}"));
+
         let method = session.req_header().method.as_str();
+
         let retry_allowed = ctx.retry_max_attempts > 1
             && ctx.retry_methods.iter().any(|allowed| allowed == method)
             && !session.as_ref().retry_buffer_truncated();
+
         if retry_allowed {
             error.retry.decide_reuse(client_reused);
         } else {
             error.set_retry(false);
         }
+
         error
     }
 
@@ -237,17 +273,20 @@ impl ProxyHttp for ApolloGateway {
             let status = session
                 .response_written()
                 .map_or(0, |response| response.status.as_u16());
+
             eprintln!(
                 "apollo_edge_request_failed status={status} type={:?} source={:?}",
                 error.etype, error.esource
             );
         }
+
         if ctx.counted {
             let _ = self
                 .in_flight
                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                     current.checked_sub(1)
                 });
+
             ctx.counted = false;
         }
     }

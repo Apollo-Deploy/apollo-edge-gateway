@@ -5,7 +5,6 @@
 //! without retaining an unused discovery/health service. Each attempt must use a
 //! fresh iterator's first candidate: iterating further changes exhaustion/dedup
 //! semantics. A future internal-health service must revisit this invariant.
-
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;

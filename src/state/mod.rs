@@ -1,5 +1,4 @@
 //! Persisted gateway authority and atomic, integrity-checked state storage.
-
 mod format;
 mod store;
 

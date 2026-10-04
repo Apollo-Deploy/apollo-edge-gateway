@@ -39,21 +39,27 @@ pub fn collect_until_done(
     mut operation: impl FnMut() -> Interval,
 ) -> Trace {
     let capacity = trace.capacity;
+
     let deadline = Instant::now() + Duration::from_secs(30);
+
     // Storage exhaustion must NEVER shorten the competing reader workload.
     while !done.load(Ordering::Acquire) {
         assert!(
             Instant::now() < deadline,
             "reader deadline exceeded before writer completion"
         );
+
         let sample = operation();
+
         trace.decisions += 1;
+
         if trace.samples.len() < capacity {
             trace.samples.push(sample);
         } else {
             trace.truncated += 1;
         }
     }
+
     trace
 }
 
@@ -77,7 +83,9 @@ pub fn summarize(
         .copied()
         .filter(|sample| sample.intersects(workload))
         .collect();
+
     let full_worker_lifetime = worker.start <= workload.start && worker.end >= workload.end;
+
     let covered_writes = writes
         .iter()
         .filter(|write| {
@@ -87,6 +95,7 @@ pub fn summarize(
                 .any(|sample| sample.intersects(**write))
         })
         .count();
+
     Evidence {
         latency: cohort
             .iter()
@@ -125,6 +134,7 @@ pub fn pooled_eligible(evidence: &[Evidence], union: usize, writes: usize) -> bo
 }
 
 pub struct StopOnDrop<'a>(pub &'a AtomicBool);
+
 impl Drop for StopOnDrop<'_> {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);

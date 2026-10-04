@@ -6,19 +6,24 @@ A Rust HTTPS gateway built on [Pingora](https://github.com/cloudflare/pingora), 
 
 The gateway separates serving traffic from authorizing configuration: a controller installs certificate material and publishes bounded, versioned route configurations; request handling reads local admitted state without querying a database or the controller.
 
-> **Status:** experimental, version 0.1.0. Local correctness checks and routing microbenchmarks do not constitute production qualification. Native Linux HTTPS load, certificate lifecycle, recovery, and network-isolation qualification remain incomplete.
 
 ## What it does
 
 - Terminates frontend TLS with hostname-scoped certificate selection.
 - Routes by exact hostname, path prefix, and admitted HTTP method to private IPv4 workload endpoints.
-- Supports HTTP/1.1 and HTTP/2; HTTP/3 is not supported. gRPC, WebSocket, and SSE are not qualified features.
+- Supports HTTP/1.1 and HTTP/2.
 - Applies controller-epoch and generation fencing, conflict detection, withdrawal tombstones, and draining.
 - Persists configuration with bounded protobuf decoding, an integrity digest, and atomic file replacement.
 - Exposes apply, inspect, drain, withdraw, capabilities, status, and certificate installation over mutually authenticated TLS.
 - Uses immutable snapshots for read-mostly routing and local TCP-connect health probes.
 
-This is **not** a general-purpose YAML-configured proxy, a deployment platform, an ACME client, or a standalone control plane. A compatible controller is required to authorize routes and install frontend certificate material. The control protocol is framed protobuf over TLS, **not gRPC or an HTTP administration API**.
+A compatible controller authorizes routes and installs frontend certificate
+material. Certificate lifecycle operations belong to
+[apollo-certd](https://github.com/Apollo-Deploy/apollo-certd), and provider DNS
+operations belong to [apollo-dnsd](https://github.com/Apollo-Deploy/apollo-dnsd).
+The gateway continues serving its admitted local state when those services or
+the controller are unavailable, subject to certificate and snapshot validity.
+The control protocol uses framed protobuf over TLS.
 
 `src/bin/edge-control-client.rs` is a fixed-fixture development client, not a general production controller or automatic certificate provisioner. Inspect its test identities, hostname, backend address, and validity assumptions before use.
 
@@ -51,7 +56,7 @@ Apple command-line developer tools must also be installed. If OpenSSL is not dis
 cargo build --locked --release --bin apollo-edge-gateway
 ```
 
-`build.rs` generates Rust types from the checked-in [`proto/apollo/edge/edge_control.proto`](proto/apollo/edge/edge_control.proto). `Cargo.lock` is checked in. The first build may download locked crates; `--offline` works only after all dependencies are cached.
+The workspace-owned [`crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto`](crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto) is compiled by that crate's `build.rs`; the gateway depends only on the versioned local `edge-gateway-protocol` crate. `Cargo.lock` is checked in. The first build may download locked crates; `--offline` works only after all dependencies are cached.
 
 ## Run
 
@@ -72,7 +77,7 @@ set +a
 ./target/release/apollo-edge-gateway
 ```
 
-An empty gateway can start, but it has no serving routes or frontend certificates. A compatible controller must install certificate material and apply a valid configuration before HTTPS requests can succeed. The public listener is initialized only after state recovery and authenticated control-listener initialization succeed.
+An empty gateway can start, but it has no serving routes or frontend certificates. A compatible controller must install certificate material and apply a valid configuration before HTTPS requests can succeed. State and certificate material recover before the public listener starts. If the authenticated control listener is missing or cannot initialize, the gateway logs the failure and continues serving already-admitted local state; a supervisor can restart it to restore management connectivity.
 
 See [configuration](docs/configuration.md) and [control protocol](docs/control-protocol.md). Keep the control listener on a trusted management network. Run as a dedicated unprivileged user with private persistent storage; the example binds localhost and an unprivileged HTTPS port deliberately.
 
@@ -92,10 +97,12 @@ Controller  -> mTLS + framed protobuf -> admission/fencing -> durable state + pu
 | `src/transport/` | Control mTLS, bounded framing, dispatch, and health probes |
 | `src/state/` | Persisted protobuf envelope, validation, and atomic replacement |
 | `src/material/` | Scoped certificate verification, installation, loading, and retirement |
-| `proto/` | Source control protocol; generated Rust is build output |
+| `crates/edge-gateway-protocol/` | Versioned source control protocol and generated Prost types |
 | `benches/`, `tests/` | Routing/layout benchmarks and owner-boundary integration coverage |
 
-`src/main.rs` is thin; the library exposes the existing gateway façade while implementation helpers remain private. See the [optimized architecture](docs/performance/architecture.md).
+`src/main.rs` composes the services; implementation helpers remain private.
+Certificate parsing and validation happen during snapshot admission. Handshakes
+select cached material, with no ACME, DNS, or controller RPC on the request path.
 
 ## Development
 
@@ -109,17 +116,3 @@ cargo build --locked --release
 ```
 
 The repository-local [CI workflow](.github/workflows/ci.yml) runs these checks on Linux. It uses read-only repository permissions and does not deploy or publish releases. See [contributing](CONTRIBUTING.md) for protocol compatibility and test expectations, and [security](SECURITY.md) for trust boundaries and disclosure guidance.
-
-## Performance
-
-The retained implementation indexes exact-host candidates, borrows the existing Pingora selector, and reads one local-health view per resolution. Measured warm GET/HEAD backend selection is allocation-free for the benchmark fixtures.
-
-Historical local fleet routing decisions improved **22.15×** and p99 improved **10.084 → 0.542 µs**. These are in-process decisions on one machine, **not HTTPS capacity or a latency SLA**. Some configuration-publication workloads became **2.03–4.23× slower**; the design favors read-mostly multi-host serving.
-
-- [Run benchmarks](benches/README.md)
-- [Baseline and scope](docs/performance/baseline.md)
-- [Hot path](docs/performance/hot-path.md)
-- [Optimization decisions](docs/performance/optimization-plan.md)
-- [Results and tradeoffs](docs/performance/optimization-results.md)
-
-Historical before/after archives remain in the originating deployment repository and are not included here. This checkout provides current-source benchmark workloads, not a reconstruction of that historical baseline.

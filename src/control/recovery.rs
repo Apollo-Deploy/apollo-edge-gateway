@@ -1,5 +1,4 @@
 //! Recovery of durable authority and persistence before runtime publication.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -16,6 +15,7 @@ use super::{ActiveConfigurations, GatewayState};
 impl GatewayState {
     pub fn from_store(store: StateStore) -> Result<Self, StateError> {
         let persisted = store.load()?;
+
         let (active, epoch, tombstones, drains) = match persisted {
             None => (
                 ActiveConfigurations::default(),
@@ -25,11 +25,15 @@ impl GatewayState {
             ),
             Some(state) => {
                 let mut entries = BTreeMap::new();
+
                 let mut expired_tombstones = BTreeMap::new();
+
                 for configuration in state.active {
                     let snapshot = Snapshot::admit_persisted(configuration)
                         .map_err(|_| StateError::Invalid("active configuration admission"))?;
+
                     let target_id = snapshot.identity.traffic_target_id.clone();
+
                     if !snapshot.is_live() {
                         expired_tombstones.insert(
                             target_id,
@@ -39,12 +43,15 @@ impl GatewayState {
                                 configuration_hash: snapshot.configuration_hash,
                             },
                         );
+
                         continue;
                     }
+
                     if entries.insert(target_id, Arc::new(snapshot)).is_some() {
                         return Err(StateError::Invalid("duplicate active target"));
                     }
                 }
+
                 let mut tombstones = state
                     .tombstones
                     .into_iter()
@@ -59,6 +66,7 @@ impl GatewayState {
                         )
                     })
                     .collect::<BTreeMap<_, _>>();
+
                 for (target_id, expired) in expired_tombstones {
                     match tombstones.get(&target_id) {
                         Some(current)
@@ -76,6 +84,7 @@ impl GatewayState {
                         }
                     }
                 }
+
                 let drains = state
                     .drains
                     .into_iter()
@@ -91,6 +100,7 @@ impl GatewayState {
                         )
                     })
                     .collect::<BTreeMap<_, _>>();
+
                 for (target_id, snapshot) in &entries {
                     if let Some(tombstone) = tombstones.get(target_id) {
                         if authority_decision(
@@ -108,6 +118,7 @@ impl GatewayState {
                         }
                     }
                 }
+
                 (
                     ActiveConfigurations::new(entries),
                     state.authority_epoch,
@@ -116,10 +127,12 @@ impl GatewayState {
                 )
             }
         };
+
         let draining = drains
             .iter()
             .map(|(target_id, drain)| (target_id.clone(), drain.drain_until_unix_ms))
             .collect();
+
         Ok(Self {
             active: ArcSwap::from_pointee(active),
             authority: Mutex::new(AuthorityState {
@@ -144,6 +157,7 @@ impl GatewayState {
         let Some(store) = &self.store else {
             return Ok(());
         };
+
         let state = PersistedState {
             active: active
                 .entries
@@ -173,6 +187,7 @@ impl GatewayState {
                 })
                 .collect(),
         };
+
         store
             .replace(&state)
             .map_err(|_| AdmissionError::Persistence)

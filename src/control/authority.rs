@@ -1,5 +1,4 @@
 //! Shared epoch/generation fencing, withdrawal tombstones, and drain authority.
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -84,12 +83,15 @@ pub(super) fn authority_decision(
     if incoming_epoch < active_epoch {
         return AuthorityDecision::StaleEpoch;
     }
+
     if incoming_epoch > active_epoch {
         return AuthorityDecision::New;
     }
+
     if incoming_generation < active_generation {
         return AuthorityDecision::StaleGeneration;
     }
+
     if incoming_generation == active_generation {
         return if active_hash == incoming_hash {
             AuthorityDecision::Idempotent
@@ -97,5 +99,6 @@ pub(super) fn authority_decision(
             AuthorityDecision::Conflict
         };
     }
+
     AuthorityDecision::New
 }

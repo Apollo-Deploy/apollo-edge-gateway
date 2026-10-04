@@ -1,5 +1,4 @@
 //! Observed gateway state for the fleet and individual traffic targets.
-
 use crate::snapshot::Snapshot;
 
 use super::{EdgeConfigurationState, GatewayState, ProductIdentity, unix_ms};
@@ -7,6 +6,7 @@ use super::{EdgeConfigurationState, GatewayState, ProductIdentity, unix_ms};
 impl GatewayState {
     pub fn inspect(&self) -> EdgeConfigurationState {
         let active = self.active.load_full();
+
         let authority = match self.authority.lock() {
             Ok(authority) => authority,
             Err(_) => {
@@ -17,15 +17,19 @@ impl GatewayState {
                 };
             }
         };
+
         if active.entries.len() == 1 {
             if let Some(snapshot) = active.entries.values().next() {
                 let draining = authority
                     .drains
                     .contains_key(&snapshot.identity.traffic_target_id);
+
                 return snapshot_state(snapshot, draining);
             }
         }
+
         let mut routes = Vec::new();
+
         for snapshot in active.entries.values() {
             if authority
                 .drains
@@ -33,6 +37,7 @@ impl GatewayState {
             {
                 continue;
             }
+
             routes.extend(snapshot.routes.iter().filter_map(|route| {
                 route
                     .identity
@@ -40,13 +45,18 @@ impl GatewayState {
                     .map(|identity| identity.route_id.clone())
             }));
         }
+
         routes.retain(|route_id| !route_id.is_empty());
+
         routes.sort();
+
         routes.dedup();
+
         let latest = active
             .entries
             .values()
             .max_by_key(|snapshot| (snapshot.controller_epoch, snapshot.generation));
+
         EdgeConfigurationState {
             identity: None,
             controller_epoch: authority.epoch,
@@ -75,7 +85,9 @@ impl GatewayState {
         let Some(identity) = identity else {
             return self.inspect();
         };
+
         let active = self.active.load_full();
+
         if let Some(snapshot) = active.entries.get(&identity.traffic_target_id) {
             if snapshot.identity.organization_id == identity.organization_id
                 && snapshot.identity.project_id == identity.project_id
@@ -84,8 +96,10 @@ impl GatewayState {
                     .draining
                     .load()
                     .contains_key(&identity.traffic_target_id);
+
                 return snapshot_state(snapshot, draining);
             }
+
             return EdgeConfigurationState {
                 identity: Some(identity),
                 withdrawn: true,
@@ -93,6 +107,7 @@ impl GatewayState {
                 ..Default::default()
             };
         }
+
         let authority = match self.authority.lock() {
             Ok(authority) => authority,
             Err(_) => {
@@ -104,6 +119,7 @@ impl GatewayState {
                 };
             }
         };
+
         if let Some(tombstone) = authority.tombstones.get(&identity.traffic_target_id) {
             EdgeConfigurationState {
                 identity: Some(identity),
@@ -127,6 +143,7 @@ impl GatewayState {
 
 fn snapshot_state(snapshot: &Snapshot, draining: bool) -> EdgeConfigurationState {
     let now = unix_ms();
+
     EdgeConfigurationState {
         identity: Some(snapshot.identity.clone()),
         controller_epoch: snapshot.controller_epoch,

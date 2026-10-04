@@ -1,5 +1,4 @@
 //! TLS certificate selection and handshake metadata for request SNI validation.
-
 use std::any::Any;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +12,6 @@ use pingora::tls::ext::{ssl_add_chain_cert, ssl_use_certificate, ssl_use_private
 use pingora::tls::ssl::NameType;
 
 use crate::GatewayState;
-use crate::material::load_certificate_material;
 
 #[derive(Debug)]
 pub(super) struct TlsMetadata {
@@ -22,7 +20,6 @@ pub(super) struct TlsMetadata {
 
 struct GatewayTlsCallbacks {
     state: Arc<GatewayState>,
-    material_directory: PathBuf,
 }
 
 /// Creates callback-backed listener TLS settings with HTTP/2 enabled.
@@ -32,14 +29,14 @@ struct GatewayTlsCallbacks {
 /// Returns the Pingora error if TLS settings cannot be initialized.
 pub(crate) fn tls_settings(
     state: Arc<GatewayState>,
-    material_directory: PathBuf,
+    _material_directory: PathBuf,
 ) -> Result<TlsSettings> {
-    let callbacks: TlsAcceptCallbacks = Box::new(GatewayTlsCallbacks {
-        state,
-        material_directory,
-    });
+    let callbacks: TlsAcceptCallbacks = Box::new(GatewayTlsCallbacks { state });
+
     let mut tls = TlsSettings::with_callbacks(callbacks)?;
+
     tls.enable_h2();
+
     Ok(tls)
 }
 
@@ -50,23 +47,23 @@ impl TlsAccept for GatewayTlsCallbacks {
             let host = ssl
                 .servername(NameType::HOST_NAME)
                 .ok_or_else(|| anyhow::anyhow!("TLS SNI is missing"))?;
-            let (reference, public_hash, chain_hash) = self
+
+            let material = self
                 .state
-                .certificate_binding_for_host(host)
+                .certificate_for_host(host)
                 .ok_or_else(|| anyhow::anyhow!("no admitted certificate for TLS hostname"))?;
-            let (certificate, chain, private_key) = load_certificate_material(
-                &self.material_directory,
-                &reference,
-                &public_hash,
-                &chain_hash,
-            )?;
-            ssl_use_certificate(ssl, &certificate)?;
-            for certificate in &chain {
+
+            ssl_use_certificate(ssl, &material.leaf)?;
+
+            for certificate in &material.chain {
                 ssl_add_chain_cert(ssl, certificate)?;
             }
-            ssl_use_private_key(ssl, &private_key)?;
+
+            ssl_use_private_key(ssl, &material.private_key)?;
+
             Ok(())
         })();
+
         if let Err(error) = loaded {
             eprintln!("Apollo Edge TLS certificate material could not be loaded: {error:#}");
         }

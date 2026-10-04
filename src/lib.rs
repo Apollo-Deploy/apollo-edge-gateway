@@ -2,7 +2,6 @@
 //!
 //! Public feature facades retain the control and storage interfaces; process
 //! startup and Pingora request handling remain private behind [`run`].
-
 pub mod control;
 pub mod material;
 pub mod snapshot;

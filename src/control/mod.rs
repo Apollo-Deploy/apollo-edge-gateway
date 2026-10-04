@@ -2,7 +2,6 @@
 //!
 //! Feature implementations stay private; protocol types and routing results retain
 //! their existing `crate::control` paths.
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

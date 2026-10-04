@@ -4,7 +4,7 @@ Thank you for helping improve Apollo Edge Gateway.
 
 ## Before contributing
 
-This is an experimental gateway, not a production-qualified deployment platform. The project is distributed under the [MIT license](LICENSE); contributions are intended to be distributed under that same license. No contributor license agreement or additional rights assignment is implied by this document. Use [SECURITY.md](SECURITY.md) for private disclosure rather than reporting vulnerabilities publicly.
+The project is distributed under the [MIT license](LICENSE); contributions are intended to be distributed under that same license. No contributor license agreement or additional rights assignment is implied by this document. Use [SECURITY.md](SECURITY.md) for private disclosure rather than reporting vulnerabilities publicly.
 
 Use the [README](README.md) to install the pinned toolchain and native dependencies. All commands run from the gateway repository root; no parent repository is required.
 
@@ -16,9 +16,10 @@ Preserve safe Rust, tenant isolation, authority fencing, certificate checks, req
 
 ## Compatibility
 
-[`proto/apollo/edge/edge_control.proto`](proto/apollo/edge/edge_control.proto) is the checked-in control contract. Do not hand-edit generated Rust. Preserve existing protobuf field numbers, package identity, enum values, and persisted-state bytes. A protocol, environment, or storage change must document migration, mixed-version behavior, and rollback implications.
+[`crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto`](crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto) is the checked-in versioned control contract. Do not hand-edit generated Rust. Preserve existing protobuf field numbers, package identity, enum values, and persisted-state bytes. A protocol, environment, or storage change must document migration, mixed-version behavior, and rollback implications.
 
-The schema was extracted byte-for-byte from the originating application. While that application retains its own contract copy, coordinate changes across both consumers; neither a network fetch nor a parent-directory fallback is part of this build.
+The protocol crate is owned by this repository. Coordinate wire-contract changes
+with external controllers; the build requires no parent or sibling source.
 
 ## Validation
 
@@ -34,10 +35,6 @@ cargo build --locked --release
 The Linux [CI workflow](.github/workflows/ci.yml) runs these commands. Record checks actually executed, including environmental blockers. Compilation and unit tests do not establish native TLS delivery, firewall isolation, or production capacity.
 
 For tests, protect observable behavior at its production owner. Name the credible regression, ensure stronger existing coverage does not already prove the same contract, and avoid source-text assertions, test-only APIs, or expected values computed by the function under test. For a bug regression, demonstrate the intended failure before the fix and a pass afterward.
-
-## Performance changes
-
-Follow [the benchmark guide](benches/README.md). Compare identical workloads, build flags, dependency locks, and machine conditions. Run multiple matched repetitions and report adverse cases as well as improvements. Keep allocation instrumentation separate from timing. Do not introduce brittle wall-clock CI thresholds or trade security for throughput.
 
 ## Pull requests
 

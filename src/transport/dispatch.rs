@@ -18,8 +18,11 @@ pub(super) fn dispatch(
     let (payload, observation) = match request.payload.take() {
         Some(control_request::Payload::ApplyConfiguration(request)) => {
             let identity = request.identity.clone();
+
             let operation = request.operation.clone();
+
             let outcome = state.apply(request);
+
             let observation = command_observation(
                 gateway_id,
                 session_id,
@@ -28,6 +31,7 @@ pub(super) fn dispatch(
                 &outcome,
                 EdgeObservationKind::ConfigurationActive,
             );
+
             (
                 control_response::Payload::Command(command_response(outcome, state, identity)),
                 Some(observation),
@@ -35,8 +39,11 @@ pub(super) fn dispatch(
         }
         Some(control_request::Payload::WithdrawConfiguration(request)) => {
             let identity = request.identity.clone();
+
             let operation = request.operation.clone();
+
             let outcome = state.withdraw(request);
+
             let observation = command_observation(
                 gateway_id,
                 session_id,
@@ -45,6 +52,7 @@ pub(super) fn dispatch(
                 &outcome,
                 EdgeObservationKind::ConfigurationWithdrawn,
             );
+
             (
                 control_response::Payload::Command(command_response(outcome, state, identity)),
                 Some(observation),
@@ -52,8 +60,11 @@ pub(super) fn dispatch(
         }
         Some(control_request::Payload::DrainConfiguration(request)) => {
             let identity = request.identity.clone();
+
             let operation = request.operation.clone();
+
             let outcome = state.drain(request);
+
             let observation = command_observation(
                 gateway_id,
                 session_id,
@@ -62,6 +73,7 @@ pub(super) fn dispatch(
                 &outcome,
                 EdgeObservationKind::RouteDrained,
             );
+
             (
                 control_response::Payload::Command(command_response(outcome, state, identity)),
                 Some(observation),
@@ -85,6 +97,7 @@ pub(super) fn dispatch(
         ),
         Some(control_request::Payload::GatewayStatus(_request)) => {
             let state = state.inspect();
+
             (
                 control_response::Payload::Status(GatewayStatus {
                     gateway_id: gateway_id.into(),
@@ -103,7 +116,9 @@ pub(super) fn dispatch(
         }
         Some(control_request::Payload::InstallCertificateMaterial(mut request)) => {
             let outcome = state.install_certificate_material(&request);
+
             request.private_key_pem.zeroize();
+
             (
                 control_response::Payload::Command(command_response(outcome, state, None)),
                 None,
@@ -119,6 +134,7 @@ pub(super) fn dispatch(
             None,
         ),
     };
+
     ControlResponse {
         payload: Some(payload),
         observations: observation.into_iter().collect(),
@@ -134,6 +150,7 @@ fn command_observation(
     accepted_kind: EdgeObservationKind,
 ) -> EdgeObservation {
     let rejected = matches!(outcome, CommandOutcome::Rejected(_));
+
     EdgeObservation {
         gateway_id: gateway_id.into(),
         session_id: session_id.into(),
@@ -160,6 +177,7 @@ fn command_response(
     identity: Option<crate::control::ProductIdentity>,
 ) -> EdgeCommandResponse {
     let current = state.inspect_for(identity);
+
     let current_fields = EdgeCommandResponse {
         controller_epoch: current.controller_epoch,
         generation: current.generation,
@@ -168,6 +186,7 @@ fn command_response(
         observed_at_unix_ms: current.observed_at_unix_ms,
         ..Default::default()
     };
+
     match outcome {
         CommandOutcome::Accepted => EdgeCommandResponse {
             result: crate::control::EdgeCommandResult::Accepted as i32,
@@ -195,12 +214,14 @@ fn unix_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::control::{EdgeCommandResult, GatewayCapabilitiesRequest};
 
     #[test]
     fn capabilities_response_metadata_preserves_protocols_limits_and_tls_flag() {
         let state = GatewayState::empty();
+
         for tls_termination in [false, true] {
             let request = ControlRequest {
                 payload: Some(control_request::Payload::GatewayCapabilities(

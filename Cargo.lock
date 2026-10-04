@@ -110,10 +110,10 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bytes",
+ "edge-gateway-protocol",
  "openssl",
  "pingora",
  "prost",
- "prost-build",
  "serde",
  "sha2",
  "stats_alloc",
@@ -458,6 +458,14 @@ dependencies = [
  "block-buffer",
  "crypto-common",
  "subtle",
+]
+
+[[package]]
+name = "edge-gateway-protocol"
+version = "1.0.0"
+dependencies = [
+ "prost",
+ "prost-build",
 ]
 
 [[package]]

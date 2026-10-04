@@ -1,5 +1,4 @@
 //! Persisted protobuf messages, envelope constants, errors, and retained-authority validation.
-
 use std::collections::HashSet;
 use std::fmt;
 
@@ -8,9 +7,13 @@ use prost::Message;
 use crate::control::EdgeConfiguration;
 
 pub(super) const MAGIC: &[u8] = b"APOLLO-EDGE-STATE\n";
+
 pub(super) const DIGEST_BYTES: usize = 32;
+
 pub const MAX_STATE_BYTES: usize = 8 * 1024 * 1024;
+
 pub const MAX_TOMBSTONES: usize = 4_096;
+
 pub const MAX_ACTIVE_CONFIGURATIONS: usize = 1_024;
 
 #[derive(Clone, PartialEq, Message)]
@@ -86,20 +89,25 @@ pub(super) fn validate_state(state: &PersistedState) -> Result<(), StateError> {
     if state.tombstones.len() > MAX_TOMBSTONES {
         return Err(StateError::Invalid("too many tombstones"));
     }
+
     if state.active.len() > MAX_ACTIVE_CONFIGURATIONS {
         return Err(StateError::Invalid("too many active configurations"));
     }
+
     let mut active_targets = HashSet::new();
+
     for active in &state.active {
         let target_id = active
             .identity
             .as_ref()
             .map(|identity| identity.traffic_target_id.as_str())
             .unwrap_or_default();
+
         if target_id.is_empty() || !active_targets.insert(target_id) {
             return Err(StateError::Invalid("active configuration identity"));
         }
     }
+
     for tombstone in &state.tombstones {
         if tombstone.target_id.is_empty()
             || tombstone.controller_epoch == 0
@@ -110,10 +118,13 @@ pub(super) fn validate_state(state: &PersistedState) -> Result<(), StateError> {
             return Err(StateError::Invalid("tombstone identity"));
         }
     }
+
     if state.drains.len() > MAX_ACTIVE_CONFIGURATIONS {
         return Err(StateError::Invalid("too many drains"));
     }
+
     let mut drain_targets = HashSet::new();
+
     for drain in &state.drains {
         if drain.target_id.is_empty()
             || !drain_targets.insert(&drain.target_id)
@@ -126,6 +137,7 @@ pub(super) fn validate_state(state: &PersistedState) -> Result<(), StateError> {
             return Err(StateError::Invalid("drain identity"));
         }
     }
+
     for active in &state.active {
         if active.controller_epoch > state.authority_epoch {
             return Err(StateError::Invalid(
@@ -133,5 +145,6 @@ pub(super) fn validate_state(state: &PersistedState) -> Result<(), StateError> {
             ));
         }
     }
+
     Ok(())
 }

@@ -20,3 +20,11 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# Internal development reports are not public source documentation.
+/docs/performance/
+/docs/evidence/
+/docs/refactor-review.md
+/docs/service-architecture.md
+/docs/repository-extraction.md
+/benches/README.md

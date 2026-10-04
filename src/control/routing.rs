@@ -1,5 +1,4 @@
 //! Runtime route lookup, per-route limits, and local backend health publication.
-
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -29,10 +28,12 @@ pub struct RuntimeLimits {
 impl GatewayState {
     pub fn limits_for(&self, host: &str, path: &str) -> Option<RuntimeLimits> {
         let active = self.active.load();
+
         active.candidates(host).iter().find_map(|snapshot| {
             if !snapshot.is_live() {
                 return None;
             }
+
             snapshot
                 .route_for_host_path(host, path)
                 .map(|_| RuntimeLimits {
@@ -47,28 +48,39 @@ impl GatewayState {
 
     pub fn resolve_backend(&self, host: &str, path: &str, method: &str) -> RouteLookup {
         let active = self.active.load();
+
         let draining = self.draining.load();
+
         let mut matched: Option<&Arc<Snapshot>> = None;
+
         let mut method_blocked = false;
+
         for snapshot in active.candidates(host) {
             if !snapshot.is_live() {
                 continue;
             }
+
             if draining.contains_key(&snapshot.identity.traffic_target_id) {
                 continue;
             }
+
             let Some(route) = snapshot.route_for_host_path(host, path) else {
                 continue;
             };
+
             if !route.methods.is_empty() && !route.methods.iter().any(|allowed| allowed == method) {
                 method_blocked = true;
+
                 continue;
             }
+
             if matched.is_some() {
                 return RouteLookup::Ambiguous;
             }
+
             matched = Some(snapshot);
         }
+
         let Some(snapshot) = matched else {
             return if method_blocked {
                 RouteLookup::MethodNotAllowed
@@ -76,7 +88,9 @@ impl GatewayState {
                 RouteLookup::NotFound
             };
         };
+
         let health = self.local_health.load();
+
         snapshot
             .select_backend(host, path, method, |key| {
                 health.get(key).copied().unwrap_or(false)
@@ -87,7 +101,9 @@ impl GatewayState {
 
     pub fn health_targets(&self) -> Vec<HealthTarget> {
         let active = self.active.load_full();
+
         let mut targets = BTreeMap::new();
+
         for snapshot in active.entries.values() {
             if snapshot.withdrawn
                 || self
@@ -97,10 +113,12 @@ impl GatewayState {
             {
                 continue;
             }
+
             for target in snapshot.health_targets() {
                 targets.insert(target.key.clone(), target.clone());
             }
         }
+
         targets.into_values().collect()
     }
 

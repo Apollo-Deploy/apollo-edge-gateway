@@ -1,5 +1,4 @@
 //! Admitted routing snapshots and their public model, with private admission and routing logic.
-
 use std::net::SocketAddr;
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +36,8 @@ pub enum AdmissionError {
 
 #[derive(Clone)]
 pub struct Snapshot {
+    pub(crate) certificates:
+        std::collections::BTreeMap<String, std::sync::Arc<crate::material::CachedCertificate>>,
     pub configuration: EdgeConfiguration,
     pub identity: ProductIdentity,
     pub controller_epoch: u64,
@@ -65,6 +66,7 @@ impl Snapshot {
 
     pub fn empty() -> Self {
         Self {
+            certificates: Default::default(),
             configuration: EdgeConfiguration::default(),
             identity: ProductIdentity::default(),
             controller_epoch: 0,
@@ -83,6 +85,7 @@ impl Snapshot {
 
     pub fn with_withdrawn(mut self) -> Self {
         self.withdrawn = true;
+
         self
     }
 }

@@ -1,5 +1,4 @@
 //! Idempotent installation of immutable certificate versions through private staging.
-
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -15,7 +14,9 @@ use super::paths::{canonical_root, ensure_private_directory, safe_material_segme
 use super::verification::verify_material_bytes;
 
 const MAX_CERTIFICATE_PEM_BYTES: usize = 1024 * 1024;
+
 const MAX_PRIVATE_KEY_PEM_BYTES: usize = 64 * 1024;
+
 static NEXT_INSTALL_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Installs one immutable, tenant-scoped certificate version. Repeating the
@@ -37,6 +38,7 @@ pub fn install_certificate_material(
     {
         anyhow::bail!("certificate material request is invalid");
     }
+
     verify_material_bytes(
         &request.certificate_chain_pem,
         &request.private_key_pem,
@@ -45,6 +47,7 @@ pub fn install_certificate_material(
     )?;
 
     let root = canonical_root(material_directory)?;
+
     let reference = format!(
         "{}/{}/{}/{}",
         request.organization_id,
@@ -52,18 +55,22 @@ pub fn install_certificate_material(
         request.certificate_id,
         request.certificate_version
     );
+
     let destination = root.join(&reference);
+
     match fs::symlink_metadata(&destination) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
                 anyhow::bail!("certificate version path is unsafe");
             }
+
             let _ = load_certificate_material(
                 &root,
                 &reference,
                 &request.public_key_sha256,
                 &request.certificate_chain_sha256,
             )?;
+
             return Ok(false);
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -71,6 +78,7 @@ pub fn install_certificate_material(
     }
 
     let mut parent = root.clone();
+
     for component in [
         request.organization_id.as_str(),
         request.project_id.as_str(),
@@ -78,30 +86,42 @@ pub fn install_certificate_material(
     ] {
         parent = ensure_private_directory(&parent, component)?;
     }
+
     let stage = loop {
         let id = NEXT_INSTALL_ID.fetch_add(1, Ordering::Relaxed);
+
         let path = parent.join(format!(".install-{}-{id}", std::process::id()));
+
         match fs::create_dir(&path) {
             Ok(()) => break path,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error.into()),
         }
     };
+
     #[cfg(unix)]
     fs::set_permissions(&stage, fs::Permissions::from_mode(0o700))?;
+
     let write_result = (|| -> anyhow::Result<()> {
         write_material_file(
             &stage.join("certificate.pem"),
             &request.certificate_chain_pem,
         )?;
+
         write_material_file(&stage.join("private-key.pem"), &request.private_key_pem)?;
+
         File::open(&stage)?.sync_all()?;
+
         fs::rename(&stage, &destination)?;
+
         File::open(&parent)?.sync_all()?;
+
         Ok(())
     })();
+
     if let Err(error) = write_result {
         let _ = fs::remove_dir_all(&stage);
+
         if let Ok(metadata) = fs::symlink_metadata(&destination)
             && !metadata.file_type().is_symlink()
             && metadata.is_dir()
@@ -112,28 +132,38 @@ pub fn install_certificate_material(
                 &request.public_key_sha256,
                 &request.certificate_chain_sha256,
             )?;
+
             return Ok(false);
         }
+
         return Err(error);
     }
+
     let _ = load_certificate_material(
         &root,
         &reference,
         &request.public_key_sha256,
         &request.certificate_chain_sha256,
     )?;
+
     Ok(true)
 }
 
 fn write_material_file(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
     let mut options = OpenOptions::new();
+
     options.write(true).create_new(true);
+
     #[cfg(unix)]
     {
         options.mode(0o600);
     }
+
     let mut file = options.open(path)?;
+
     file.write_all(contents)?;
+
     file.sync_all()?;
+
     Ok(())
 }

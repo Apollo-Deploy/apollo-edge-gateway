@@ -1,6 +1,6 @@
 # Control protocol
 
-The source contract is [`proto/apollo/edge/edge_control.proto`](../proto/apollo/edge/edge_control.proto), in protobuf package `apollo.edge`. `build.rs` generates Prost types locally; the existing Rust façade reexports them through `apollo_edge_gateway::control`.
+The source contract is [`crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto`](../crates/edge-gateway-protocol/proto/apollo/edge/edge_control.proto), in protobuf package `apollo.edge`. The protocol crate's `build.rs` generates Prost types locally; the gateway reexports the versioned contract through `apollo_edge_gateway::control`.
 
 This transport is **not gRPC**. A compatible controller connects to the gateway's control listener using mutually authenticated TLS and exchanges length-prefixed protobuf messages.
 

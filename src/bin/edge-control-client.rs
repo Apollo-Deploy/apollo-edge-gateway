@@ -21,26 +21,35 @@ const FRAME_LIMIT: usize = 4 * 1024 * 1024;
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut args = env::args().skip(1);
+
     let address = args.next().context("missing gateway address")?;
+
     let ca = args.next().context("missing CA path")?;
+
     let certificate = args.next().context("missing client certificate path")?;
+
     let private_key = args.next().context("missing client key path")?;
+
     let backend_port: u32 = args
         .next()
         .context("missing backend port")?
         .parse()
         .context("invalid backend port")?;
+
     let workload_generation: u64 = args
         .next()
         .context("missing workload generation")?
         .parse()
         .context("invalid workload generation")?;
+
     let configuration_generation: u64 = args
         .next()
         .context("missing configuration generation")?
         .parse()
         .context("invalid configuration generation")?;
+
     let edge_certificate = args.next().context("missing edge certificate path")?;
+
     if args.next().is_some()
         || !(1024..=u16::MAX as u32).contains(&backend_port)
         || workload_generation == 0
@@ -53,14 +62,19 @@ async fn main() -> Result<()> {
 
     let certificates = X509::stack_from_pem(&std::fs::read(&edge_certificate)?)
         .context("invalid edge certificate chain")?;
+
     let leaf = certificates
         .first()
         .context("edge certificate chain is empty")?;
+
     let public_certificate_hash = Sha256::digest(leaf.public_key()?.public_key_to_der()?).to_vec();
+
     let mut chain_der = Vec::new();
+
     for certificate in &certificates {
         chain_der.extend_from_slice(&certificate.to_der()?);
     }
+
     let certificate_chain_hash = Sha256::digest(chain_der).to_vec();
 
     let now = env::var("APOLLO_EDGE_TEST_NOW_MS")
@@ -77,6 +91,7 @@ async fn main() -> Result<()> {
                 .context("clock before epoch")?
                 .as_millis() as i64,
         );
+
     let identity = ProductIdentity {
         organization_id: "edge-test-organization".into(),
         project_id: "edge-test-project".into(),
@@ -86,6 +101,7 @@ async fn main() -> Result<()> {
         route_id: "edge-test-route".into(),
         traffic_target_id: "edge-test-target".into(),
     };
+
     let endpoint = WorkloadEndpoint {
         workload_id: "edge-test-workload".into(),
         workload_generation,
@@ -100,6 +116,7 @@ async fn main() -> Result<()> {
         ready: true,
         healthy: true,
     };
+
     let route = EdgeRoute {
         identity: Some(identity.clone()),
         hostname: "edge.test".into(),
@@ -122,6 +139,7 @@ async fn main() -> Result<()> {
         }),
         route_generation: configuration_generation,
     };
+
     let mut configuration = EdgeConfiguration {
         identity: Some(identity.clone()),
         controller_epoch: 1,
@@ -139,7 +157,9 @@ async fn main() -> Result<()> {
         semantic_hash: Sha256::digest(b"edge-test-configuration").to_vec(),
         ..Default::default()
     };
+
     configuration.configuration_hash = configuration_hash(&configuration);
+
     let operation = OperationIdentity {
         operation_id: "edge-test-apply".into(),
         effect_id: "edge-test-apply-effect".into(),
@@ -147,6 +167,7 @@ async fn main() -> Result<()> {
         generation: configuration.generation,
         configuration_hash: configuration.configuration_hash.clone(),
     };
+
     let request = ControlRequest {
         payload: Some(control_request::Payload::ApplyConfiguration(
             ApplyConfigurationRequest {
@@ -158,34 +179,53 @@ async fn main() -> Result<()> {
     };
 
     let mut builder = SslConnector::builder(SslMethod::tls_client())?;
+
     builder.set_verify(SslVerifyMode::PEER);
+
     builder.set_ca_file(ca)?;
+
     builder.set_certificate_chain_file(certificate)?;
+
     builder.set_private_key_file(private_key, SslFiletype::PEM)?;
+
     let ssl = builder.build().configure()?.into_ssl("edge-control")?;
+
     let socket = TcpStream::connect(&address).await?;
+
     let mut stream = SslStream::new(ssl, socket)?;
+
     Pin::new(&mut stream).connect().await?;
 
     let encoded = request.encode_to_vec();
+
     if encoded.is_empty() || encoded.len() > FRAME_LIMIT {
         anyhow::bail!("control request exceeds the configured bound");
     }
+
     stream
         .write_all(&(encoded.len() as u32).to_be_bytes())
         .await?;
+
     stream.write_all(&encoded).await?;
+
     stream.flush().await?;
 
     let mut length = [0u8; 4];
+
     stream.read_exact(&mut length).await?;
+
     let length = u32::from_be_bytes(length) as usize;
+
     if length == 0 || length > FRAME_LIMIT {
         anyhow::bail!("control response exceeds the configured bound");
     }
+
     let mut response_bytes = vec![0u8; length];
+
     stream.read_exact(&mut response_bytes).await?;
+
     let response = control::ControlResponse::decode(response_bytes.as_slice())?;
+
     match response.payload {
         Some(control::control_response::Payload::Command(command)) => {
             println!(
@@ -199,12 +239,15 @@ async fn main() -> Result<()> {
         }
         other => println!("unexpected control response: {}", response_kind(other)),
     }
+
     Ok(())
 }
 
 fn configuration_hash(configuration: &EdgeConfiguration) -> Vec<u8> {
     let mut unsigned = configuration.clone();
+
     unsigned.configuration_hash.clear();
+
     Sha256::digest(unsigned.encode_to_vec()).to_vec()
 }
 

@@ -1,5 +1,4 @@
 //! Environment configuration for the public and authenticated control listeners.
-
 use crate::transport::ControlConfig;
 
 pub(super) fn state_path_from_environment() -> anyhow::Result<String> {
@@ -22,8 +21,10 @@ pub(super) fn control_config_from_environment() -> anyhow::Result<ControlConfig>
 
 pub(super) fn required_environment(name: &str) -> anyhow::Result<String> {
     let value = std::env::var(name).map_err(|_| anyhow::anyhow!("{name} is required"))?;
+
     if value.is_empty() {
         return Err(anyhow::anyhow!("{name} must not be empty"));
     }
+
     Ok(value)
 }

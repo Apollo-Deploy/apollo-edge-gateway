@@ -1,0 +1,13 @@
+[package]
+name = "edge-gateway-protocol"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/Apollo-Deploy/apollo-edge-gateway"
+description = "Versioned control protocol for Apollo Edge Gateway"
+publish = false
+[dependencies]
+prost = "=0.13.5"
+[build-dependencies]
+prost-build = "=0.13.5"

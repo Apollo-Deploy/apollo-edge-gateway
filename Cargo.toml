@@ -13,11 +13,10 @@ categories = ["network-programming", "web-programming::http-server"]
 publish = false
 include = [
     "src/**",
-    "proto/**",
+    "crates/**",
     "benches/**",
     "tests/**",
     "docs/**",
-    "build.rs",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
@@ -31,8 +30,10 @@ include = [
 # Do not inherit an enclosing application's workspace or dependency resolution.
 [workspace]
 resolver = "3"
+members = ["crates/edge-gateway-protocol"]
 
 [dependencies]
+edge-gateway-protocol = { version = "1.0.0", path = "crates/edge-gateway-protocol" }
 anyhow = "=1.0.104"
 arc-swap = "=1.9.2"
 async-trait = "=0.1.92"
@@ -45,9 +46,6 @@ sha2 = "=0.10.9"
 tokio = { version = "=1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-openssl = "=0.6.5"
 zeroize = "=1.9.0"
-
-[build-dependencies]
-prost-build = "=0.13.5"
 
 [features]
 bench-allocations = []

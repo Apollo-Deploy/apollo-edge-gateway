@@ -1,5 +1,4 @@
 //! Configuration admission, route and endpoint validation, and unsigned configuration hashing.
-
 use std::collections::{BTreeSet, HashSet};
 use std::net::{IpAddr, SocketAddr};
 
@@ -29,40 +28,57 @@ impl Snapshot {
             .identity
             .clone()
             .ok_or(AdmissionError::InvalidIdentity)?;
+
         if identity.organization_id.is_empty()
             || identity.project_id.is_empty()
             || identity.traffic_target_id.is_empty()
         {
             return Err(AdmissionError::InvalidIdentity);
         }
+
         if configuration.configuration_hash.len() != 32 {
             return Err(AdmissionError::ConfigurationHash);
         }
+
         if configuration.semantic_hash.len() != 32 {
             return Err(AdmissionError::ConfigurationHash);
         }
+
         if configuration.controller_epoch == 0 || configuration.generation == 0 {
             return Err(AdmissionError::InvalidIdentity);
         }
+
         if configuration.valid_until_unix_ms <= configuration.issued_at_unix_ms {
             return Err(AdmissionError::InvalidValidity);
         }
+
         if !allow_expired && configuration.valid_until_unix_ms <= unix_ms() {
             return Err(AdmissionError::AuthorityExpired);
         }
+
         if configuration.routes.len() > 1_024 {
             return Err(AdmissionError::LimitExceeded);
         }
+
         let mut route_keys = HashSet::new();
+
         let mut backend_selectors = Vec::with_capacity(configuration.routes.len());
+
         let mut backend_addresses = Vec::with_capacity(configuration.routes.len());
+
         let mut backend_health_keys = Vec::with_capacity(configuration.routes.len());
+
         let mut health_targets = Vec::new();
+
         let target_id = identity.traffic_target_id.clone();
+
         for route in &configuration.routes {
             validate_route(route, &mut route_keys)?;
+
             let mut route_addresses = Vec::new();
+
             let mut route_health_keys = Vec::new();
+
             let backends = route
                 .backends
                 .iter()
@@ -72,23 +88,30 @@ impl Snapshot {
                         .endpoint
                         .as_ref()
                         .ok_or(AdmissionError::InvalidEndpoint)?;
+
                     let socket_address = endpoint
                         .address
                         .parse::<IpAddr>()
                         .map(|address| SocketAddr::new(address, endpoint.port as u16))
                         .map_err(|_| AdmissionError::InvalidEndpoint)?;
+
                     let address = socket_address.to_string();
 
                     let health_key = backend_health_key(&target_id, endpoint, &socket_address);
+
                     route_addresses.push(socket_address);
+
                     route_health_keys.push(health_key.clone());
+
                     health_targets.push(HealthTarget {
                         key: health_key,
                         address: socket_address,
                     });
+
                     Backend::new(&address).map_err(|_| AdmissionError::InvalidEndpoint)
                 })
                 .collect::<Result<BTreeSet<_>, _>>()?;
+
             let selector = if backends.is_empty() {
                 None
             } else {
@@ -96,14 +119,20 @@ impl Snapshot {
             };
 
             backend_addresses.push(route_addresses);
+
             backend_health_keys.push(route_health_keys);
+
             backend_selectors.push(selector);
         }
+
         let expected_hash = digest_without_hash(&configuration);
+
         if expected_hash != configuration.configuration_hash {
             return Err(AdmissionError::ConfigurationHash);
         }
+
         Ok(Self {
+            certificates: Default::default(),
             configuration: configuration.clone(),
             identity,
             controller_epoch: configuration.controller_epoch,
@@ -126,6 +155,7 @@ fn validate_route(
     route_keys: &mut HashSet<String>,
 ) -> Result<(), AdmissionError> {
     let key = format!("{}\0{}", route.hostname, route.path_match);
+
     if route.hostname.is_empty()
         || route.hostname.len() > 253
         || route.hostname != route.hostname.to_ascii_lowercase()
@@ -138,16 +168,19 @@ fn validate_route(
     {
         return Err(AdmissionError::InvalidRoute);
     }
+
     if route.protocols.iter().any(|protocol| {
         *protocol != EdgeProtocol::Http1 as i32 && *protocol != EdgeProtocol::Http2 as i32
     }) {
         return Err(AdmissionError::UnsupportedOperation);
     }
+
     for backend in &route.backends {
         let endpoint = backend
             .endpoint
             .as_ref()
             .ok_or(AdmissionError::InvalidEndpoint)?;
+
         if endpoint.workload_id.is_empty()
             || endpoint.workload_generation == 0
             || endpoint.node_id.is_empty()
@@ -162,15 +195,19 @@ fn validate_route(
         {
             return Err(AdmissionError::UnsupportedNetworkScope);
         }
+
         let address: IpAddr = endpoint
             .address
             .parse()
             .map_err(|_| AdmissionError::InvalidEndpoint)?;
+
         if address.is_loopback() || address.is_unspecified() || !is_private(address) {
             return Err(AdmissionError::InvalidEndpoint);
         }
+
         let _ = SocketAddr::new(address, endpoint.port as u16);
     }
+
     Ok(())
 }
 
@@ -195,15 +232,18 @@ fn is_private(address: IpAddr) -> bool {
 
 fn digest_without_hash(configuration: &EdgeConfiguration) -> Vec<u8> {
     let mut unsigned = configuration.clone();
+
     unsigned.configuration_hash.clear();
+
     let bytes = unsigned.encode_to_vec();
+
     Sha256::digest(bytes).to_vec()
 }
 
 #[cfg(test)]
 mod tests {
-    //! Signed inputs must reach route/endpoint validation and publish selectable backends.
 
+    //! Signed inputs must reach route/endpoint validation and publish selectable backends.
     use std::net::SocketAddr;
 
     use crate::snapshot::{AdmissionError, Snapshot};
@@ -220,14 +260,19 @@ mod tests {
             ("fe80::5", "[fe80::5]:8080"),
         ] {
             let mut input = configuration();
+
             input.routes[0].backends[0]
                 .endpoint
                 .as_mut()
                 .expect("fixture endpoint")
                 .address = address.into();
+
             sign_configuration(&mut input);
+
             let snapshot = Snapshot::admit(input).expect("private endpoint admitted");
+
             let expected: SocketAddr = expected_backend.parse().expect("literal backend address");
+
             assert_eq!(
                 snapshot.select_backend("api.example.com", "/", "GET", |_| true),
                 Some(expected),
@@ -249,12 +294,15 @@ mod tests {
             "10.0.0.5:8080",
         ] {
             let mut input = configuration();
+
             input.routes[0].backends[0]
                 .endpoint
                 .as_mut()
                 .expect("fixture endpoint")
                 .address = address.into();
+
             sign_configuration(&mut input);
+
             assert_eq!(
                 Snapshot::admit(input).err(),
                 Some(AdmissionError::InvalidEndpoint),
@@ -272,8 +320,11 @@ mod tests {
             "c".repeat(63),
             "d".repeat(61)
         );
+
         assert_eq!(longest_hostname.len(), 253);
+
         let expected: SocketAddr = "10.0.0.5:8080".parse().expect("literal backend address");
+
         for hostname in [
             "api.example.com".to_owned(),
             "api-1.example.com".to_owned(),
@@ -281,9 +332,13 @@ mod tests {
             longest_hostname,
         ] {
             let mut input = configuration();
+
             input.routes[0].hostname = hostname.clone();
+
             sign_configuration(&mut input);
+
             let snapshot = Snapshot::admit(input).expect("valid hostname admitted");
+
             assert_eq!(
                 snapshot.select_backend(&hostname, "/", "GET", |_| true),
                 Some(expected),
@@ -298,7 +353,9 @@ mod tests {
             "c".repeat(63),
             "d".repeat(62)
         );
+
         assert_eq!(oversized_hostname.len(), 254);
+
         for hostname in [
             "".to_owned(),
             ".example".to_owned(),
@@ -313,8 +370,11 @@ mod tests {
             oversized_hostname,
         ] {
             let mut input = configuration();
+
             input.routes[0].hostname = hostname.clone();
+
             sign_configuration(&mut input);
+
             assert_eq!(
                 Snapshot::admit(input).err(),
                 Some(AdmissionError::InvalidRoute),
